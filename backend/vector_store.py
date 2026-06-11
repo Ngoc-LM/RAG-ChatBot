@@ -2,12 +2,12 @@ import os
 import httpx
 from upstash_vector import Index
 
-JINA_API_KEY = os.getenv("JINA_API_KEY")
+COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 UPSTASH_URL = os.getenv("UPSTASH_VECTOR_REST_URL")
 UPSTASH_TOKEN = os.getenv("UPSTASH_VECTOR_REST_TOKEN")
 
-JINA_EMBED_URL = "https://api.jina.ai/v1/embeddings"
-EMBED_MODEL = "jina-embeddings-v3"
+COHERE_EMBED_URL = "https://api.cohere.com/v2/embed"
+EMBED_MODEL = "embed-multilingual-v3.0"
 EMBED_DIM = 1024
 
 
@@ -16,45 +16,45 @@ def get_index() -> Index:
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Call Jina AI to embed a list of texts."""
+    """Call Cohere to embed a list of texts (passages)."""
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
-            JINA_EMBED_URL,
+            COHERE_EMBED_URL,
             headers={
-                "Authorization": f"Bearer {JINA_API_KEY}",
+                "Authorization": f"Bearer {COHERE_API_KEY}",
                 "Content-Type": "application/json",
             },
             json={
                 "model": EMBED_MODEL,
-                "task": "retrieval.passage",
-                "dimensions": EMBED_DIM,
-                "input": texts,
+                "input_type": "search_document",
+                "embedding_types": ["float"],
+                "texts": texts,
             },
         )
         resp.raise_for_status()
         data = resp.json()
-        return [item["embedding"] for item in data["data"]]
+        return data["embeddings"]["float"]
 
 
 async def embed_query(query: str) -> list[float]:
     """Embed a single query string."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            JINA_EMBED_URL,
+            COHERE_EMBED_URL,
             headers={
-                "Authorization": f"Bearer {JINA_API_KEY}",
+                "Authorization": f"Bearer {COHERE_API_KEY}",
                 "Content-Type": "application/json",
             },
             json={
                 "model": EMBED_MODEL,
-                "task": "retrieval.query",
-                "dimensions": EMBED_DIM,
-                "input": [query],
+                "input_type": "search_query",
+                "embedding_types": ["float"],
+                "texts": [query],
             },
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["data"][0]["embedding"]
+        return data["embeddings"]["float"][0]
 
 
 async def upsert_chunks(doc_id: str, chunks: list[str]) -> int:
