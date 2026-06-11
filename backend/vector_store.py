@@ -1,6 +1,5 @@
 import os
 import httpx
-from upstash_vector import Index
 
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 UPSTASH_URL = os.getenv("UPSTASH_VECTOR_REST_URL")
@@ -10,9 +9,17 @@ COHERE_EMBED_URL = "https://api.cohere.com/v2/embed"
 EMBED_MODEL = "embed-multilingual-v3.0"
 EMBED_DIM = 1024
 
+UPSTASH_HEADERS = {
+    "Authorization": f"Bearer {UPSTASH_TOKEN}",
+    "Content-Type": "application/json",
+}
 
-def get_index() -> Index:
-    return Index(url=UPSTASH_URL, token=UPSTASH_TOKEN, retries=3)
+
+def _upstash_headers():
+    return {
+        "Authorization": f"Bearer {UPSTASH_TOKEN}",
+        "Content-Type": "application/json",
+    }
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
@@ -58,8 +65,7 @@ async def embed_query(query: str) -> list[float]:
 
 
 async def upsert_chunks(doc_id: str, chunks: list[str]) -> int:
-    """Embed and upsert chunks into Upstash Vector."""
-    index = get_index()
+    """Embed and upsert chunks into Upstash Vector via REST API."""
     embeddings = await embed_texts(chunks)
 
     vectors = []
@@ -76,35 +82,66 @@ async def upsert_chunks(doc_id: str, chunks: list[str]) -> int:
 
     # Upsert in batches of 100
     batch_size = 100
-    for i in range(0, len(vectors), batch_size):
-        batch = vectors[i:i + batch_size]
-        index.upsert(vectors=batch)
+    async with httpx.AsyncClient(timeout=60) as client:
+        for i in range(0, len(vectors), batch_size):
+            batch = vectors[i:i + batch_size]
+            resp = await client.post(
+                f"{UPSTASH_URL}/upsert",
+                headers=_upstash_headers(),
+                json=batch,
+            )
+            resp.raise_for_status()
 
     return len(vectors)
 
 
 async def delete_doc_vectors(doc_id: str):
     """Delete all vectors associated with a document."""
-    index = get_index()
     # Query to find all chunk IDs for this doc
-    results = index.query(
-        vector=[0.0] * EMBED_DIM,
-        top_k=1000,
-        filter=f'doc_id = "{doc_id}"',
-        include_metadata=True,
-    )
-    ids = [r.id for r in results]
-    if ids:
-        index.delete(ids=ids)
+    dummy_vector = [0.0] * EMBED_DIM
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{UPSTASH_URL}/query",
+            headers=_upstash_headers(),
+            json={
+                "vector": dummy_vector,
+                "topK": 1000,
+                "filter": f'doc_id = "{doc_id}"',
+                "includeMetadata": False,
+            },
+        )
+        resp.raise_for_status()
+        results = resp.json().get("result", [])
+        ids = [r["id"] for r in results]
+
+        if ids:
+            del_resp = await client.delete(
+                f"{UPSTASH_URL}/delete",
+                headers=_upstash_headers(),
+                json=ids,
+            )
+            del_resp.raise_for_status()
 
 
 async def search_similar(query: str, top_k: int = 5) -> list[str]:
-    """Search for similar chunks given a query."""
-    index = get_index()
+    """Search for similar chunks given a query via Upstash REST API."""
     query_emb = await embed_query(query)
-    results = index.query(
-        vector=query_emb,
-        top_k=top_k,
-        include_metadata=True,
-    )
-    return [r.metadata["text"] for r in results if r.metadata and "text" in r.metadata]
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{UPSTASH_URL}/query",
+            headers=_upstash_headers(),
+            json={
+                "vector": query_emb,
+                "topK": top_k,
+                "includeMetadata": True,
+            },
+        )
+        resp.raise_for_status()
+        results = resp.json().get("result", [])
+
+    return [
+        r["metadata"]["text"]
+        for r in results
+        if r.get("metadata") and "text" in r["metadata"]
+    ]
