@@ -12,7 +12,7 @@ EMBED_DIM = 1024
 
 
 def get_index() -> Index:
-    return Index(url=UPSTASH_URL, token=UPSTASH_TOKEN)
+    return Index(url=UPSTASH_URL, token=UPSTASH_TOKEN, retries=3)
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
