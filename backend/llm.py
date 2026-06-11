@@ -3,7 +3,7 @@ import httpx
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "qwen/qwen3-8b:free"
+MODEL = "openrouter/owl-alpha"
 
 SYSTEM_PROMPT = """You are a helpful research assistant. Answer questions based on the provided context from the user's documents.
 
@@ -31,7 +31,7 @@ Question: {query}
 
 Please answer the question based on the context above."""
 
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=90) as client:
         resp = await client.post(
             OPENROUTER_URL,
             headers={
@@ -50,6 +50,11 @@ Please answer the question based on the context above."""
                 "max_tokens": 1024,
             },
         )
-        resp.raise_for_status()
+
+        # Log error detail for debugging
+        if resp.status_code != 200:
+            error_body = resp.text
+            raise Exception(f"OpenRouter error {resp.status_code}: {error_body}")
+
         data = resp.json()
         return data["choices"][0]["message"]["content"]
