@@ -16,7 +16,7 @@ Rules:
 
 
 async def generate_answer(query: str, context_chunks: list[str]) -> str:
-    """Generate an answer using Qwen via OpenRouter given query and context."""
+    """Generate an answer using Owl Alpha via OpenRouter given query and context."""
     if not context_chunks:
         return (
             "Tôi không tìm thấy thông tin liên quan trong tài liệu của bạn. "
@@ -51,10 +51,26 @@ Please answer the question based on the context above."""
             },
         )
 
-        # Log error detail for debugging
         if resp.status_code != 200:
-            error_body = resp.text
-            raise Exception(f"OpenRouter error {resp.status_code}: {error_body}")
+            raise Exception(f"OpenRouter error {resp.status_code}: {resp.text}")
 
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+
+        # Standard OpenAI-compatible format
+        if "choices" in data and len(data["choices"]) > 0:
+            choice = data["choices"][0]
+            if "message" in choice:
+                return choice["message"].get("content", "")
+            elif "text" in choice:
+                return choice["text"]
+
+        # Non-standard formats
+        if "content" in data:
+            return data["content"]
+        if "text" in data:
+            return data["text"]
+        if "output" in data:
+            return data["output"]
+
+        # Log full response for debugging
+        raise Exception(f"Unexpected response format: {list(data.keys())}")
