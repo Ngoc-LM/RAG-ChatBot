@@ -1,21 +1,19 @@
 import os
 import httpx
 
-COHERE_API_KEY = os.getenv("COHERE_API_KEY")
-UPSTASH_URL = os.getenv("UPSTASH_VECTOR_REST_URL")
-UPSTASH_TOKEN = os.getenv("UPSTASH_VECTOR_REST_TOKEN")
-
 COHERE_EMBED_URL = "https://api.cohere.com/v2/embed"
 EMBED_MODEL = "embed-multilingual-v3.0"
 EMBED_DIM = 1024
 
-# Max tokens Cohere supports per text is 512.
-# ~350 words is safe for mixed VI/EN text (Vietnamese is token-denser).
-CHUNK_WORD_LIMIT = 350
+CHUNK_TOKEN_SIZE = 400
+CHUNK_TOKEN_OVERLAP = 40
+
+
+def _upstash_url() -> str:
+    return os.getenv("UPSTASH_VECTOR_REST_URL", "")
 
 
 def _upstash_headers() -> dict:
-    """Build headers lazily so env vars are always resolved at call time."""
     return {
         "Authorization": f"Bearer {os.getenv('UPSTASH_VECTOR_REST_TOKEN', '')}",
         "Content-Type": "application/json",
@@ -29,8 +27,12 @@ def _cohere_headers() -> dict:
     }
 
 
+def _vector_id(session_id: str, doc_id: str, index: int) -> str:
+    """Unique vector ID scoped to session and document."""
+    return f"{session_id}__{doc_id}__{index}"
+
+
 async def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Call Cohere to embed a list of texts (search_document input type)."""
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
             COHERE_EMBED_URL,
@@ -43,12 +45,10 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
             },
         )
         resp.raise_for_status()
-        data = resp.json()
-        return data["embeddings"]["float"]
+        return resp.json()["embeddings"]["float"]
 
 
 async def embed_query(query: str) -> list[float]:
-    """Embed a single query string (search_query input type)."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             COHERE_EMBED_URL,
@@ -61,33 +61,32 @@ async def embed_query(query: str) -> list[float]:
             },
         )
         resp.raise_for_status()
-        data = resp.json()
-        return data["embeddings"]["float"][0]
+        return resp.json()["embeddings"]["float"][0]
 
 
-async def upsert_chunks(doc_id: str, chunks: list[str]) -> int:
-    """Embed and upsert chunks into Upstash Vector via REST API."""
+async def upsert_chunks(session_id: str, doc_id: str, chunks: list[str]) -> int:
+    """Embed and upsert chunks with session-scoped vector IDs."""
     embeddings = await embed_texts(chunks)
 
-    vectors = []
-    for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
-        vectors.append({
-            "id": f"{doc_id}_{i}",
+    vectors = [
+        {
+            "id": _vector_id(session_id, doc_id, i),
             "vector": emb,
             "metadata": {
+                "session_id": session_id,
                 "doc_id": doc_id,
                 "chunk_index": i,
                 "text": chunk,
             },
-        })
+        }
+        for i, (chunk, emb) in enumerate(zip(chunks, embeddings))
+    ]
 
-    # Upsert in batches of 100
-    batch_size = 100
     async with httpx.AsyncClient(timeout=60) as client:
-        for i in range(0, len(vectors), batch_size):
-            batch = vectors[i : i + batch_size]
+        for i in range(0, len(vectors), 100):
+            batch = vectors[i : i + 100]
             resp = await client.post(
-                f"{os.getenv('UPSTASH_VECTOR_REST_URL', '')}/upsert",
+                f"{_upstash_url()}/upsert",
                 headers=_upstash_headers(),
                 json=batch,
             )
@@ -96,38 +95,32 @@ async def upsert_chunks(doc_id: str, chunks: list[str]) -> int:
     return len(vectors)
 
 
-async def delete_doc_vectors(doc_id: str, chunk_count: int):
-    """
-    Delete all vectors for a document by constructing IDs directly.
-
-    Previously used a dummy-zero-vector query which is unreliable with
-    cosine distance (zero vector has undefined direction). Since chunk IDs
-    follow the pattern '{doc_id}_{i}', we build the list explicitly.
-    """
-    ids = [f"{doc_id}_{i}" for i in range(chunk_count)]
-
-    # Upstash REST delete accepts a JSON array of IDs
+async def delete_doc_vectors(session_id: str, doc_id: str, chunk_count: int):
+    """Delete all vectors for a document using deterministic IDs."""
+    ids = [_vector_id(session_id, doc_id, i) for i in range(chunk_count)]
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.delete(
-            f"{os.getenv('UPSTASH_VECTOR_REST_URL', '')}/delete",
+            f"{_upstash_url()}/delete",
             headers=_upstash_headers(),
             json=ids,
         )
         resp.raise_for_status()
 
 
-async def search_similar(query: str, top_k: int = 5) -> list[str]:
-    """Search for similar chunks given a query via Upstash REST API."""
+async def search_similar(session_id: str, query: str, top_k: int = 5) -> list[str]:
+    """Search for similar chunks, filtered to the current session only."""
     query_emb = await embed_query(query)
 
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            f"{os.getenv('UPSTASH_VECTOR_REST_URL', '')}/query",
+            f"{_upstash_url()}/query",
             headers=_upstash_headers(),
             json={
                 "vector": query_emb,
                 "topK": top_k,
                 "includeMetadata": True,
+                # Filter ensures users never see each other's documents
+                "filter": f'session_id = "{session_id}"',
             },
         )
         resp.raise_for_status()
