@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import UploadPanel from "./components/UploadPanel";
 import ChatPanel from "./components/ChatPanel";
+import { getSessionId, resetSession } from "./session";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const MAX_HISTORY_TURNS = 6;
@@ -10,6 +11,17 @@ const INITIAL_MESSAGE = {
   content: "Xin chào! Tôi là trợ lý nghiên cứu của bạn. Hãy upload tài liệu và đặt câu hỏi nhé. 👋",
 };
 
+/** Attach session header to every fetch call */
+function apiFetch(path, options = {}) {
+  return fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      "X-Session-ID": getSessionId(),
+    },
+  });
+}
+
 export default function App() {
   const [documents, setDocuments] = useState([]);
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
@@ -17,10 +29,9 @@ export default function App() {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch(`${API_BASE}/documents`);
+      const res = await apiFetch("/documents");
       if (!res.ok) return;
-      const data = await res.json();
-      setDocuments(data);
+      setDocuments(await res.json());
     } catch (e) {
       console.error("Failed to fetch documents:", e);
     }
@@ -33,10 +44,7 @@ export default function App() {
   const handleUpload = async (file) => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/upload`, {
-      method: "POST",
-      body: formData,
-    });
+    const res = await apiFetch("/upload", { method: "POST", body: formData });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || "Upload failed");
@@ -47,11 +55,18 @@ export default function App() {
   };
 
   const handleDelete = async (docId) => {
-    await fetch(`${API_BASE}/documents/${docId}`, { method: "DELETE" });
+    await apiFetch(`/documents/${docId}`, { method: "DELETE" });
     setDocuments((prev) => prev.filter((d) => d.id !== docId));
   };
 
   const handleClearChat = () => {
+    setMessages([INITIAL_MESSAGE]);
+  };
+
+  /** Start a completely fresh session (new ID + clear state) */
+  const handleNewSession = () => {
+    resetSession();
+    setDocuments([]);
     setMessages([INITIAL_MESSAGE]);
   };
 
@@ -60,13 +75,12 @@ export default function App() {
     setMessages(newMessages);
     setLoading(true);
 
-    // Build history: skip greeting + current message, keep last N turns
     const historySource = newMessages.slice(1, -1);
     const trimmed = historySource.slice(-MAX_HISTORY_TURNS * 2);
     const history = trimmed.map(({ role, content }) => ({ role, content }));
 
     try {
-      const res = await fetch(`${API_BASE}/chat`, {
+      const res = await apiFetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, history }),
@@ -90,11 +104,19 @@ export default function App() {
         <div className="p-4 border-b border-gray-800">
           <div className="flex items-center gap-2">
             <span className="text-2xl">📚</span>
-            <div>
+            <div className="flex-1 min-w-0">
               <h1 className="font-bold text-white text-sm">RAG Research Assistant</h1>
               <p className="text-xs text-gray-400">Cohere · Upstash · OpenRouter</p>
             </div>
           </div>
+          {/* New session button */}
+          <button
+            onClick={handleNewSession}
+            className="mt-3 w-full text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg py-1.5 transition"
+            title="Xóa toàn bộ session hiện tại và bắt đầu lại"
+          >
+            + Phiên mới
+          </button>
         </div>
         <UploadPanel
           documents={documents}
