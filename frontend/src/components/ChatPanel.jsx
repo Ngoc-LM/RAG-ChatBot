@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import MarkdownText from "./MarkdownText";
 
 export default function ChatPanel({ messages, loading, onSend, hasDocuments, onClearChat }) {
   const [input, setInput] = useState("");
@@ -76,15 +77,21 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
               </div>
             )}
             <div
-              className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+              className={`max-w-[75%] rounded-2xl px-4 py-3 ${
                 msg.role === "user"
-                  ? "bg-indigo-600 text-white rounded-br-sm"
+                  ? "bg-indigo-600 text-white rounded-br-sm text-sm leading-relaxed"
                   : msg.content.startsWith("⚠️")
-                  ? "bg-red-950/60 text-red-300 rounded-bl-sm"
+                  ? "bg-red-950/60 text-red-300 rounded-bl-sm text-sm leading-relaxed"
                   : "bg-gray-800 text-gray-100 rounded-bl-sm"
               }`}
             >
-              {msg.content}
+              {msg.role === "user" ? (
+                // User messages: plain text, preserve line breaks
+                <span className="whitespace-pre-wrap">{msg.content}</span>
+              ) : (
+                // Assistant messages: render markdown
+                <MarkdownText content={msg.content} />
+              )}
             </div>
           </div>
         ))}
