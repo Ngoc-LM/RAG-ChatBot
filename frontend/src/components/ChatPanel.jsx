@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 
-export default function ChatPanel({ messages, loading, onSend, hasDocuments }) {
+export default function ChatPanel({ messages, loading, onSend, hasDocuments, onClearChat }) {
   const [input, setInput] = useState("");
   const bottomRef = useRef();
   const textareaRef = useRef();
@@ -32,17 +32,35 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments }) {
     }
   }, [input]);
 
+  const turnCount = messages.filter((m) => m.role === "user").length;
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-800 flex items-center gap-3">
         <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         <span className="text-sm font-medium text-gray-200">Trợ lý Nghiên cứu</span>
+
         {!hasDocuments && (
-          <span className="ml-auto text-xs text-amber-400 bg-amber-950/40 px-2 py-1 rounded-full">
+          <span className="text-xs text-amber-400 bg-amber-950/40 px-2 py-1 rounded-full">
             ⚠️ Chưa có tài liệu
           </span>
         )}
+
+        <div className="ml-auto flex items-center gap-3">
+          {turnCount > 0 && (
+            <span className="text-xs text-gray-500">{turnCount} lượt hội thoại</span>
+          )}
+          {messages.length > 1 && onClearChat && (
+            <button
+              onClick={onClearChat}
+              className="text-xs text-gray-500 hover:text-gray-300 transition"
+              title="Xóa lịch sử chat"
+            >
+              Xóa chat
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -61,6 +79,8 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments }) {
               className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                 msg.role === "user"
                   ? "bg-indigo-600 text-white rounded-br-sm"
+                  : msg.content.startsWith("⚠️")
+                  ? "bg-red-950/60 text-red-300 rounded-bl-sm"
                   : "bg-gray-800 text-gray-100 rounded-bl-sm"
               }`}
             >
@@ -110,6 +130,7 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments }) {
             onClick={handleSubmit}
             disabled={!input.trim() || loading}
             className="w-8 h-8 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition flex-shrink-0 mb-0.5"
+            title="Gửi (Enter)"
           >
             <svg className="w-4 h-4 text-white rotate-90" fill="currentColor" viewBox="0 0 24 24">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
