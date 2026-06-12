@@ -1,7 +1,6 @@
 import os
 import httpx
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "openrouter/owl-alpha"
 
@@ -15,8 +14,29 @@ Rules:
 - Do not fabricate information"""
 
 
-async def generate_answer(query: str, context_chunks: list[str]) -> str:
-    """Generate an answer using Owl Alpha via OpenRouter given query and context."""
+def _openrouter_headers() -> dict:
+    return {
+        "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY', '')}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://rag-chatbot.app",
+        "X-Title": "RAG Research Assistant",
+    }
+
+
+async def generate_answer(
+    query: str,
+    context_chunks: list[str],
+    history: list[dict] | None = None,
+) -> str:
+    """
+    Generate an answer using Owl Alpha via OpenRouter.
+
+    Args:
+        query: The current user question.
+        context_chunks: Relevant text chunks retrieved from the vector store.
+        history: Optional list of previous turns [{"role": "user"|"assistant", "content": "..."}].
+                 Injected before the current turn so the LLM has conversation context.
+    """
     if not context_chunks:
         return (
             "Tôi không tìm thấy thông tin liên quan trong tài liệu của bạn. "
@@ -24,28 +44,24 @@ async def generate_answer(query: str, context_chunks: list[str]) -> str:
         )
 
     context = "\n\n---\n\n".join(context_chunks)
-    user_message = f"""Context from documents:
-{context}
+    user_message = (
+        f"Context from documents:\n{context}\n\nQuestion: {query}\n\n"
+        "Please answer the question based on the context above."
+    )
 
-Question: {query}
-
-Please answer the question based on the context above."""
+    # Build message list: system → history (optional) → current user turn
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
 
     async with httpx.AsyncClient(timeout=90) as client:
         resp = await client.post(
             OPENROUTER_URL,
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://rag-chatbot.app",
-                "X-Title": "RAG Research Assistant",
-            },
+            headers=_openrouter_headers(),
             json={
                 "model": MODEL,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
+                "messages": messages,
                 "temperature": 0.3,
                 "max_tokens": 1024,
             },
@@ -64,13 +80,9 @@ Please answer the question based on the context above."""
             elif "text" in choice:
                 return choice["text"]
 
-        # Non-standard formats
-        if "content" in data:
-            return data["content"]
-        if "text" in data:
-            return data["text"]
-        if "output" in data:
-            return data["output"]
+        # Non-standard fallback formats
+        for key in ("content", "text", "output"):
+            if key in data:
+                return data[key]
 
-        # Log full response for debugging
         raise Exception(f"Unexpected response format: {list(data.keys())}")
