@@ -8,10 +8,9 @@ const MAX_HISTORY_TURNS = 6;
 
 const INITIAL_MESSAGE = {
   role: "assistant",
-  content: "Xin chào! Tôi là trợ lý nghiên cứu của bạn. Hãy upload tài liệu và đặt câu hỏi nhé. 👋",
+  content: "Xin chào! Tôi là trợ lý nghiên cứu của bạn. Upload tài liệu và bắt đầu đặt câu hỏi nhé.",
 };
 
-/** Attach session header to every fetch call */
 function apiFetch(path, options = {}) {
   return fetch(`${API_BASE}${path}`, {
     ...options,
@@ -37,9 +36,7 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
+  useEffect(() => { fetchDocuments(); }, []);
 
   const handleUpload = async (file) => {
     const formData = new FormData();
@@ -59,11 +56,8 @@ export default function App() {
     setDocuments((prev) => prev.filter((d) => d.id !== docId));
   };
 
-  const handleClearChat = () => {
-    setMessages([INITIAL_MESSAGE]);
-  };
+  const handleClearChat = () => setMessages([INITIAL_MESSAGE]);
 
-  /** Start a completely fresh session (new ID + clear state) */
   const handleNewSession = () => {
     resetSession();
     setDocuments([]);
@@ -99,25 +93,51 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-950 text-gray-100 font-sans">
-      <aside className="w-72 flex-shrink-0 border-r border-gray-800 flex flex-col bg-gray-900">
-        <div className="p-4 border-b border-gray-800">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">📚</span>
-            <div className="flex-1 min-w-0">
-              <h1 className="font-bold text-white text-sm">RAG Research Assistant</h1>
-              <p className="text-xs text-gray-400">Cohere · Upstash · OpenRouter</p>
+    <div className="flex h-screen" style={{ background: "#f0f4ff" }}>
+      {/* Sidebar */}
+      <aside
+        className="w-72 flex-shrink-0 flex flex-col"
+        style={{ background: "#ffffff", borderRight: "0.5px solid #dde3f5" }}
+      >
+        {/* Logo area */}
+        <div className="p-5" style={{ borderBottom: "0.5px solid #dde3f5" }}>
+          <div className="flex items-center gap-3 mb-4">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: "#4338ca" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14,2 14,8 20,8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-sm font-semibold truncate" style={{ color: "#1e2060" }}>
+                Research Assistant
+              </h1>
+              <p className="text-xs truncate" style={{ color: "#8892c8" }}>
+                Cohere · Upstash · OpenRouter
+              </p>
             </div>
           </div>
-          {/* New session button */}
+
           <button
             onClick={handleNewSession}
-            className="mt-3 w-full text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg py-1.5 transition"
-            title="Xóa toàn bộ session hiện tại và bắt đầu lại"
+            className="w-full text-xs py-2 rounded-lg transition-all duration-150 font-medium"
+            style={{
+              border: "0.5px solid #dde3f5",
+              color: "#4338ca",
+              background: "#fafbff",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#eef1fc"; e.currentTarget.style.borderColor = "#a5b4fc"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "#fafbff"; e.currentTarget.style.borderColor = "#dde3f5"; }}
           >
-            + Phiên mới
+            + Phiên làm việc mới
           </button>
         </div>
+
         <UploadPanel
           documents={documents}
           onUpload={handleUpload}
@@ -125,6 +145,7 @@ export default function App() {
         />
       </aside>
 
+      {/* Main */}
       <main className="flex-1 flex flex-col min-w-0">
         <ChatPanel
           messages={messages}
