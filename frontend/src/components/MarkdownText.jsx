@@ -11,7 +11,7 @@ function parseInline(text) {
       parts.push(<em key={match.index} className="italic">{match[3]}</em>);
     } else if (match[4] !== undefined) {
       parts.push(
-        <code key={match.index} style={{ background: "#eef1fc", color: "#3730a3", padding: "1px 6px", borderRadius: 4, fontSize: "0.8em", fontFamily: "monospace" }}>
+        <code key={match.index} style={{ background: "#ebedf2", color: "#3730a3", padding: "1px 6px", borderRadius: 4, fontSize: "0.8em", fontFamily: "monospace" }}>
           {match[4]}
         </code>
       );
@@ -43,7 +43,7 @@ export default function MarkdownText({ content }) {
         i++;
       }
       elements.push(
-        <pre key={k()} style={{ background: "#f4f7ff", border: "0.5px solid #dde3f5", borderRadius: 8, padding: "10px 12px", margin: "8px 0", overflowX: "auto" }}>
+        <pre key={k()} style={{ background: "#ebedf2", border: "0.5px solid #d0d4de", borderRadius: 8, padding: "10px 12px", margin: "8px 0", overflowX: "auto" }}>
           <code style={{ color: "#3730a3", fontSize: "0.8em", fontFamily: "monospace", whiteSpace: "pre" }}>
             {codeLines.join("\n")}
           </code>
@@ -103,7 +103,7 @@ export default function MarkdownText({ content }) {
 
     // HR
     if (/^[-*]{3,}$/.test(line.trim())) {
-      elements.push(<hr key={k()} style={{ border: "none", borderTop: "0.5px solid #dde3f5", margin: "8px 0" }} />);
+      elements.push(<hr key={k()} style={{ border: "none", borderTop: "0.5px solid #d0d4de", margin: "8px 0" }} />);
       i++;
       continue;
     }
