@@ -93,14 +93,14 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen" style={{ background: "#f0f4ff" }}>
+    <div className="flex h-screen" style={{ background: "#e8eaef" }}>
       {/* Sidebar */}
       <aside
         className="w-72 flex-shrink-0 flex flex-col"
-        style={{ background: "#ffffff", borderRight: "0.5px solid #dde3f5" }}
+        style={{ background: "#f2f3f7", borderRight: "0.5px solid #d0d4de" }}
       >
         {/* Logo area */}
-        <div className="p-5" style={{ borderBottom: "0.5px solid #dde3f5" }}>
+        <div className="p-5" style={{ borderBottom: "0.5px solid #d0d4de" }}>
           <div className="flex items-center gap-3 mb-4">
             <div
               className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -117,7 +117,7 @@ export default function App() {
               <h1 className="text-sm font-semibold truncate" style={{ color: "#1e2060" }}>
                 Research Assistant
               </h1>
-              <p className="text-xs truncate" style={{ color: "#8892c8" }}>
+              <p className="text-xs truncate" style={{ color: "#8892b8" }}>
                 Cohere · Upstash · OpenRouter
               </p>
             </div>
@@ -127,12 +127,12 @@ export default function App() {
             onClick={handleNewSession}
             className="w-full text-xs py-2 rounded-lg transition-all duration-150 font-medium"
             style={{
-              border: "0.5px solid #dde3f5",
+              border: "0.5px solid #d0d4de",
               color: "#4338ca",
-              background: "#fafbff",
+              background: "#f2f3f7",
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = "#eef1fc"; e.currentTarget.style.borderColor = "#a5b4fc"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "#fafbff"; e.currentTarget.style.borderColor = "#dde3f5"; }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#ebedf2"; e.currentTarget.style.borderColor = "#a5b4fc"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "#f2f3f7"; e.currentTarget.style.borderColor = "#d0d4de"; }}
           >
             + Phiên làm việc mới
           </button>
