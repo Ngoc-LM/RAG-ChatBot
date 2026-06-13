@@ -10,7 +10,7 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #f0f4ff;
+  background: #e8eaef;
   color: #1e2060;
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
 }
@@ -18,7 +18,7 @@ body {
 /* Scrollbar — light theme */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #c7d0f0; border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: #c0c5d4; border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: #a5b4fc; }
 
 /* Textarea reset */
