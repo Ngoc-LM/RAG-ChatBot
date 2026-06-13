@@ -20,8 +20,8 @@ function CopyButton({ text }) {
     <button
       onClick={handleCopy}
       className="transition-all duration-150 opacity-0 group-hover:opacity-100 p-1 rounded-md"
-      style={{ color: copied ? "#4338ca" : "#b0b8d8" }}
-      onMouseEnter={e => e.currentTarget.style.background = "#eef1fc"}
+      style={{ color: copied ? "#4338ca" : "#a8afc8" }}
+      onMouseEnter={e => e.currentTarget.style.background = "#ebedf2"}
       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
       title="Sao chép"
     >
@@ -88,12 +88,12 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
   const turnCount = messages.filter((m) => m.role === "user").length;
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "#f0f4ff" }}>
+    <div className="flex flex-col h-full" style={{ background: "#e8eaef" }}>
 
       {/* Header */}
       <div
         className="px-6 py-3.5 flex items-center gap-3"
-        style={{ background: "#ffffff", borderBottom: "0.5px solid #dde3f5" }}
+        style={{ background: "#f2f3f7", borderBottom: "0.5px solid #d0d4de" }}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#22c55e" }}>
@@ -113,7 +113,7 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
 
         <div className="flex items-center gap-3 flex-shrink-0">
           {turnCount > 0 && (
-            <span className="text-xs" style={{ color: "#b0b8d8" }}>
+            <span className="text-xs" style={{ color: "#a8afc8" }}>
               {turnCount} lượt
             </span>
           )}
@@ -121,9 +121,9 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
             <button
               onClick={onClearChat}
               className="text-xs px-2.5 py-1 rounded-lg transition-all font-medium"
-              style={{ color: "#8892c8", border: "0.5px solid #dde3f5", background: "transparent" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "#f0f4ff"; e.currentTarget.style.color = "#4338ca"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#8892c8"; }}
+              style={{ color: "#8892b8", border: "0.5px solid #d0d4de", background: "transparent" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#e8eaef"; e.currentTarget.style.color = "#4338ca"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#8892b8"; }}
             >
               Xóa chat
             </button>
@@ -139,7 +139,7 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
           <div className="flex flex-col items-center justify-center h-full pb-16 gap-4">
             <div
               className="w-14 h-14 rounded-2xl flex items-center justify-center"
-              style={{ background: "#e0e7ff" }}
+              style={{ background: "#dde0f0" }}
             >
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4338ca" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
@@ -149,7 +149,7 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
               <p className="text-sm font-semibold mb-1" style={{ color: "#1e2060" }}>
                 {messages[0].content}
               </p>
-              <p className="text-xs" style={{ color: "#8892c8" }}>
+              <p className="text-xs" style={{ color: "#8892b8" }}>
                 {hasDocuments ? "Hãy đặt câu hỏi bên dưới" : "Upload tài liệu từ thanh bên để bắt đầu"}
               </p>
             </div>
@@ -162,9 +162,9 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
                     key={q}
                     onClick={() => onSend(q)}
                     className="text-xs px-3 py-1.5 rounded-full font-medium transition-all"
-                    style={{ background: "#ffffff", color: "#4338ca", border: "0.5px solid #a5b4fc" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#eef1fc"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "#ffffff"; }}
+                    style={{ background: "#f5f5f8", color: "#4338ca", border: "0.5px solid #a5b4fc" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#ebedf2"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "#f5f5f8"; }}
                   >
                     {q}
                   </button>
@@ -202,7 +202,7 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
                     : {
                         background: "#ffffff",
                         color: "#1e2060",
-                        border: "0.5px solid #dde3f5",
+                        border: "0.5px solid #d0d4de",
                         borderRadius: "16px 16px 16px 4px",
                       }
                 }
@@ -232,7 +232,7 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
               className="rounded-2xl px-4 py-3"
               style={{
                 background: "#ffffff",
-                border: "0.5px solid #dde3f5",
+                border: "0.5px solid #d0d4de",
                 borderRadius: "16px 16px 16px 4px",
               }}
             >
@@ -254,16 +254,16 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
       {/* Input area */}
       <div
         className="px-5 py-4"
-        style={{ background: "#ffffff", borderTop: "0.5px solid #dde3f5" }}
+        style={{ background: "#f2f3f7", borderTop: "0.5px solid #d0d4de" }}
       >
         <div
           className="flex gap-3 items-end rounded-2xl px-4 py-3 transition-all"
           style={{
-            background: "#f4f7ff",
-            border: "0.5px solid #dde3f5",
+            background: "#ebedf2",
+            border: "0.5px solid #d0d4de",
           }}
           onFocusCapture={e => e.currentTarget.style.borderColor = "#a5b4fc"}
-          onBlurCapture={e => e.currentTarget.style.borderColor = "#dde3f5"}
+          onBlurCapture={e => e.currentTarget.style.borderColor = "#d0d4de"}
         >
           <textarea
             ref={textareaRef}
@@ -284,7 +284,7 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
             disabled={!input.trim() || loading}
             className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150 flex-shrink-0"
             style={{
-              background: input.trim() && !loading ? "#4338ca" : "#e0e7ff",
+              background: input.trim() && !loading ? "#4338ca" : "#dde0f0",
               color: input.trim() && !loading ? "#ffffff" : "#a5b4fc",
             }}
             title="Gửi (Enter)"
@@ -292,7 +292,7 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
             <SendIcon />
           </button>
         </div>
-        <p className="text-center text-xs mt-2" style={{ color: "#c7d0f0" }}>
+        <p className="text-center text-xs mt-2" style={{ color: "#c0c5d4" }}>
           Enter để gửi · Shift+Enter xuống dòng
         </p>
       </div>
