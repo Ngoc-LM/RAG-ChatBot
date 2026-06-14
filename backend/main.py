@@ -280,15 +280,26 @@ async def chat(
             answer="Vui lòng upload ít nhất một tài liệu trước khi đặt câu hỏi."
         )
 
+    # Pass all doc_ids so search_similar can query each doc independently
+    doc_ids = list(registry.keys())
+
     try:
-        chunks = await search_similar(session_id, request.message, top_k=5)
+        chunk_results = await search_similar(session_id, request.message, doc_ids=doc_ids)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
     history = [{"role": m.role, "content": m.content} for m in request.history]
 
+    # Build doc_name map for LLM context attribution
+    doc_names = {doc_id: info["filename"] for doc_id, info in registry.items()}
+
     try:
-        answer = await generate_answer(request.message, chunks, history=history or None)
+        answer = await generate_answer(
+            request.message,
+            chunk_results,
+            doc_names=doc_names,
+            history=history or None,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM error: {e}")
 
