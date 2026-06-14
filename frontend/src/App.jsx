@@ -94,10 +94,15 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen" style={{ background: "#e8eaef" }}>
-      {/* Sidebar */}
+    // Outer wrapper — canvas sits here, fills full screen behind everything
+    <div className="flex h-screen relative" style={{ background: "#e8eaef" }}>
+
+      {/* Dot matrix — position:absolute fills the outer div, z-index 0 */}
+      <DotMatrixBackground />
+
+      {/* Sidebar — solid color covers canvas completely */}
       <aside
-        className="w-72 flex-shrink-0 flex flex-col"
+        className="relative z-10 w-72 flex-shrink-0 flex flex-col"
         style={{ background: "#f2f3f7", borderRight: "0.5px solid #d0d4de" }}
       >
         {/* Logo area */}
@@ -146,18 +151,18 @@ export default function App() {
         />
       </aside>
 
-      {/* Main — position relative so canvas sits behind chat */}
-      <main className="flex-1 flex flex-col min-w-0 relative">
-        <DotMatrixBackground />
-        <div className="relative z-10 flex flex-col flex-1 min-h-0">
-          <ChatPanel
-            messages={messages}
-            loading={loading}
-            onSend={handleSend}
-            hasDocuments={documents.length > 0}
-            onClearChat={handleClearChat}
-          />
-        </div>
+      {/* Main chat area — solid white, covers canvas completely */}
+      <main
+        className="relative z-10 flex-1 flex flex-col min-w-0"
+        style={{ background: "#ffffff" }}
+      >
+        <ChatPanel
+          messages={messages}
+          loading={loading}
+          onSend={handleSend}
+          hasDocuments={documents.length > 0}
+          onClearChat={handleClearChat}
+        />
       </main>
     </div>
   );
