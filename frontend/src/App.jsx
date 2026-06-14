@@ -81,7 +81,7 @@ export default function App() {
         body: JSON.stringify({ message, history }),
       });
       const data = await res.json();
-      const answer = res.ok ? data.answer : `⚠️ ${data.detail || "Lỗi không xác định."}`;
+      const answer = res.ok ? data.answer : res.status === 429 ? `⚠️ ${data.detail || "Quá nhiều yêu cầu. Vui lòng chờ một chút rồi thử lại."}` : `⚠️ ${data.detail || "Lỗi không xác định."}`;
       setMessages((prev) => [...prev, { role: "assistant", content: answer }]);
     } catch {
       setMessages((prev) => [
