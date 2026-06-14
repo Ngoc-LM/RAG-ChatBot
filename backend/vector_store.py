@@ -1,4 +1,5 @@
 import os
+import asyncio
 import httpx
 
 COHERE_EMBED_URL = "https://api.cohere.com/v2/embed"
@@ -7,6 +8,11 @@ EMBED_DIM = 1024
 
 CHUNK_TOKEN_SIZE = 400
 CHUNK_TOKEN_OVERLAP = 40
+
+# Max chunks returned per document when doing per-doc retrieval
+CHUNKS_PER_DOC = 2
+# Global top_k for single-pass retrieval (fallback)
+GLOBAL_TOP_K = 10
 
 
 def _upstash_url() -> str:
@@ -28,7 +34,6 @@ def _cohere_headers() -> dict:
 
 
 def _vector_id(session_id: str, doc_id: str, index: int) -> str:
-    """Unique vector ID scoped to session and document."""
     return f"{session_id}__{doc_id}__{index}"
 
 
@@ -84,7 +89,7 @@ async def upsert_chunks(session_id: str, doc_id: str, chunks: list[str]) -> int:
 
     async with httpx.AsyncClient(timeout=60) as client:
         for i in range(0, len(vectors), 100):
-            batch = vectors[i : i + 100]
+            batch = vectors[i: i + 100]
             resp = await client.post(
                 f"{_upstash_url()}/upsert",
                 headers=_upstash_headers(),
@@ -107,10 +112,8 @@ async def delete_doc_vectors(session_id: str, doc_id: str, chunk_count: int):
         resp.raise_for_status()
 
 
-async def search_similar(session_id: str, query: str, top_k: int = 5) -> list[str]:
-    """Search for similar chunks, filtered to the current session only."""
-    query_emb = await embed_query(query)
-
+async def _query_upstash(query_emb: list[float], filter_str: str, top_k: int) -> list[dict]:
+    """Single Upstash query with a filter."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{_upstash_url()}/query",
@@ -119,15 +122,64 @@ async def search_similar(session_id: str, query: str, top_k: int = 5) -> list[st
                 "vector": query_emb,
                 "topK": top_k,
                 "includeMetadata": True,
-                # Filter ensures users never see each other's documents
-                "filter": f'session_id = "{session_id}"',
+                "filter": filter_str,
             },
         )
         resp.raise_for_status()
-        results = resp.json().get("result", [])
+        return resp.json().get("result", [])
 
-    return [
-        r["metadata"]["text"]
-        for r in results
-        if r.get("metadata") and "text" in r["metadata"]
-    ]
+
+async def search_similar(
+    session_id: str,
+    query: str,
+    doc_ids: list[str],
+    top_k: int = GLOBAL_TOP_K,
+) -> list[dict]:
+    """
+    Search for relevant chunks across ALL documents in the session.
+
+    Strategy — Per-document retrieval + merge:
+      For each document, fire a separate Upstash query filtered to that doc_id.
+      This guarantees every document gets a fair chance to contribute context,
+      regardless of how many documents are in the session.
+
+      Results are then ranked by score and deduplicated before returning.
+
+    Returns a list of dicts: [{ text, doc_id, score }, ...]
+    """
+    if not doc_ids:
+        return []
+
+    query_emb = await embed_query(query)
+
+    # Fire one query per document concurrently
+    async def query_doc(doc_id: str) -> list[dict]:
+        results = await _query_upstash(
+            query_emb,
+            filter_str=f'session_id = "{session_id}" AND doc_id = "{doc_id}"',
+            top_k=CHUNKS_PER_DOC,
+        )
+        return [
+            {
+                "text": r["metadata"]["text"],
+                "doc_id": r["metadata"].get("doc_id", doc_id),
+                "score": r.get("score", 0),
+            }
+            for r in results
+            if r.get("metadata") and "text" in r["metadata"]
+        ]
+
+    per_doc_results = await asyncio.gather(*[query_doc(doc_id) for doc_id in doc_ids])
+
+    # Flatten, sort by score descending, deduplicate by text
+    all_chunks = [chunk for doc_chunks in per_doc_results for chunk in doc_chunks]
+    all_chunks.sort(key=lambda x: x["score"], reverse=True)
+
+    seen_texts: set[str] = set()
+    unique_chunks = []
+    for chunk in all_chunks:
+        if chunk["text"] not in seen_texts:
+            seen_texts.add(chunk["text"])
+            unique_chunks.append(chunk)
+
+    return unique_chunks
