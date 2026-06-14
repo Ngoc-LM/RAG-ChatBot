@@ -1,10 +1,12 @@
 import uuid
 import os
 import json
+import asyncio
 from contextlib import asynccontextmanager
+from functools import wraps
 
 import httpx
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -16,6 +18,7 @@ from parser import parse_document, chunk_text
 from vector_store import upsert_chunks, search_similar, delete_doc_vectors
 from storage import upload_file, delete_file
 from llm import generate_answer
+from rate_limit import rate_limiter, registry_cache, CLEANUP_INTERVAL_SECONDS
 
 
 ALLOWED_EXTENSIONS = {"pdf", "docx", "txt", "md", "csv"}
@@ -47,45 +50,65 @@ def _supabase_headers(content_type: str = "application/json") -> dict:
     }
 
 
-# ── Per-session registry ──────────────────────────────────────────────────────
-# Each session has its own registry file in Supabase Storage:
-#   documents/_registry_{session_id}.json
-# Format: { doc_id: { filename, chunk_count } }
-#
-# In-memory cache keyed by session_id to avoid redundant Supabase reads.
+# ── Session validation ────────────────────────────────────────────────────────
 
-_registry_cache: dict[str, dict[str, dict]] = {}  # session_id → registry
+def _get_session(x_session_id: Annotated[str | None, Header()] = None) -> str:
+    if not x_session_id or len(x_session_id) < 8:
+        raise HTTPException(status_code=400, detail="Missing or invalid X-Session-ID header.")
+    sanitized = "".join(c for c in x_session_id if c.isalnum() or c == "-")
+    if len(sanitized) < 8:
+        raise HTTPException(status_code=400, detail="Invalid X-Session-ID format.")
+    return sanitized[:64]
 
+
+# ── Rate limiting helper ──────────────────────────────────────────────────────
+
+def check_rate_limit(session_id: str, endpoint: str):
+    """Raise 429 if session has exceeded the rate limit for this endpoint."""
+    allowed, retry_after = rate_limiter.is_allowed(session_id, endpoint)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Quá nhiều yêu cầu. Vui lòng thử lại sau {retry_after} giây.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+# ── Per-session registry (TTL-cached) ────────────────────────────────────────
+# Registry files are persisted on Supabase Storage.
+# In-memory TTLRegistryCache evicts idle sessions after 30 minutes.
 
 def _registry_path(session_id: str) -> str:
     return f"_registry_{session_id}.json"
 
 
 async def _load_registry(session_id: str) -> dict[str, dict]:
-    """Load session registry from cache or Supabase Storage."""
-    if session_id in _registry_cache:
-        return _registry_cache[session_id]
+    """Load session registry — memory first, Supabase fallback."""
+    cached = registry_cache.get(session_id)
+    if cached is not None:
+        return cached
 
     url = f"{_supabase_url()}/storage/v1/object/{_BUCKET}/{_registry_path(session_id)}"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url, headers=_supabase_headers())
             if resp.status_code == 200:
-                _registry_cache[session_id] = resp.json()
-                return _registry_cache[session_id]
+                data = resp.json()
+                registry_cache.set(session_id, data)
+                return data
             if resp.status_code in (400, 404):
-                _registry_cache[session_id] = {}
-                return _registry_cache[session_id]
+                registry_cache.set(session_id, {})
+                return {}
             resp.raise_for_status()
     except Exception as e:
         print(f"[registry:{session_id[:8]}] Load warning: {e}")
-        _registry_cache[session_id] = {}
-    return _registry_cache[session_id]
+        registry_cache.set(session_id, {})
+    return {}
 
 
 async def _save_registry(session_id: str, registry: dict[str, dict]):
-    """Persist session registry to Supabase Storage and update cache."""
-    _registry_cache[session_id] = registry
+    """Persist registry to Supabase and update TTL cache."""
+    registry_cache.set(session_id, registry)
 
     content = json.dumps(registry, ensure_ascii=False).encode("utf-8")
     base_url = f"{_supabase_url()}/storage/v1/object"
@@ -108,15 +131,15 @@ async def _save_registry(session_id: str, registry: dict[str, dict]):
             resp.raise_for_status()
 
 
-def _get_session(x_session_id: Annotated[str | None, Header()] = None) -> str:
-    """Extract and validate session ID from request header."""
-    if not x_session_id or len(x_session_id) < 8:
-        raise HTTPException(status_code=400, detail="Missing or invalid X-Session-ID header.")
-    # Sanitize: only allow alphanumeric and hyphens (UUID format)
-    sanitized = "".join(c for c in x_session_id if c.isalnum() or c == "-")
-    if len(sanitized) < 8:
-        raise HTTPException(status_code=400, detail="Invalid X-Session-ID format.")
-    return sanitized[:64]  # cap length
+# ── Background cleanup task ───────────────────────────────────────────────────
+
+async def _cleanup_loop():
+    """Periodically evict expired sessions from cache and clean up rate limiter."""
+    while True:
+        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+        registry_cache.evict_expired()
+        rate_limiter.cleanup()
+        print(f"[cleanup] Cache size: {registry_cache.size} session(s)")
 
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -124,7 +147,9 @@ def _get_session(x_session_id: Annotated[str | None, Header()] = None) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("[startup] RAG Chatbot backend started.")
+    task = asyncio.create_task(_cleanup_loop())
     yield
+    task.cancel()
     print("[shutdown] RAG Chatbot backend stopped.")
 
 
@@ -165,7 +190,10 @@ class DocumentInfo(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "cache_sessions": registry_cache.size,
+    }
 
 
 @app.post("/upload", response_model=DocumentInfo)
@@ -174,6 +202,7 @@ async def upload_document(
     x_session_id: Annotated[str | None, Header()] = None,
 ):
     session_id = _get_session(x_session_id)
+    check_rate_limit(session_id, "upload")
 
     ext = file.filename.lower().rsplit(".", 1)[-1] if "." in file.filename else ""
     if ext not in ALLOWED_EXTENSIONS:
@@ -188,7 +217,6 @@ async def upload_document(
 
     doc_id = str(uuid.uuid4())
 
-    # Store file under session namespace: {session_id}/{doc_id}/{filename}
     content_type = CONTENT_TYPES.get(ext, "application/octet-stream")
     try:
         await upload_file(session_id, doc_id, file.filename, content, content_type)
@@ -205,7 +233,6 @@ async def upload_document(
 
     chunks = chunk_text(text)
 
-    # Vectors are namespaced by prefixing IDs with session_id
     try:
         chunk_count = await upsert_chunks(session_id, doc_id, chunks)
     except Exception as e:
@@ -239,6 +266,8 @@ async def delete_document(
     x_session_id: Annotated[str | None, Header()] = None,
 ):
     session_id = _get_session(x_session_id)
+    check_rate_limit(session_id, "delete")
+
     registry = await _load_registry(session_id)
     if doc_id not in registry:
         raise HTTPException(status_code=404, detail="Document not found.")
@@ -270,6 +299,7 @@ async def chat(
     x_session_id: Annotated[str | None, Header()] = None,
 ):
     session_id = _get_session(x_session_id)
+    check_rate_limit(session_id, "chat")
 
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
@@ -280,7 +310,6 @@ async def chat(
             answer="Vui lòng upload ít nhất một tài liệu trước khi đặt câu hỏi."
         )
 
-    # Pass all doc_ids so search_similar can query each doc independently
     doc_ids = list(registry.keys())
 
     try:
@@ -289,8 +318,6 @@ async def chat(
         raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
     history = [{"role": m.role, "content": m.content} for m in request.history]
-
-    # Build doc_name map for LLM context attribution
     doc_names = {doc_id: info["filename"] for doc_id, info in registry.items()}
 
     try:
