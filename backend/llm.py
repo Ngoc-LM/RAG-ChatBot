@@ -11,7 +11,8 @@ Rules:
 - Only use information from the provided context
 - If the context doesn't contain enough information, say so honestly
 - Be concise and accurate
-- Do not fabricate information"""
+- Do not fabricate information
+- When information comes from multiple documents, synthesize them coherently"""
 
 
 def _openrouter_headers() -> dict:
@@ -25,7 +26,8 @@ def _openrouter_headers() -> dict:
 
 async def generate_answer(
     query: str,
-    context_chunks: list[str],
+    chunk_results: list[dict],
+    doc_names: dict[str, str] | None = None,
     history: list[dict] | None = None,
 ) -> str:
     """
@@ -33,23 +35,32 @@ async def generate_answer(
 
     Args:
         query: The current user question.
-        context_chunks: Relevant text chunks retrieved from the vector store.
-        history: Optional list of previous turns [{"role": "user"|"assistant", "content": "..."}].
-                 Injected before the current turn so the LLM has conversation context.
+        chunk_results: List of { text, doc_id, score } from vector search.
+        doc_names: Mapping of doc_id → filename for attribution in context.
+        history: Optional previous conversation turns.
     """
-    if not context_chunks:
+    if not chunk_results:
         return (
             "Tôi không tìm thấy thông tin liên quan trong tài liệu của bạn. "
-            "Vui lòng upload tài liệu phù hợp hoặc thử câu hỏi khác."
+            "Vui lòng thử câu hỏi khác hoặc upload tài liệu phù hợp hơn."
         )
 
-    context = "\n\n---\n\n".join(context_chunks)
+    # Build context block — label each chunk with its source document
+    context_parts = []
+    for i, chunk in enumerate(chunk_results, 1):
+        doc_id = chunk.get("doc_id", "")
+        filename = (doc_names or {}).get(doc_id, "Tài liệu")
+        context_parts.append(f"[{i}] Từ tài liệu: {filename}\n{chunk['text']}")
+
+    context = "\n\n---\n\n".join(context_parts)
+
     user_message = (
-        f"Context from documents:\n{context}\n\nQuestion: {query}\n\n"
-        "Please answer the question based on the context above."
+        f"Context từ các tài liệu:\n\n{context}\n\n"
+        f"Câu hỏi: {query}\n\n"
+        "Hãy trả lời dựa trên context trên. "
+        "Nếu thông tin đến từ nhiều tài liệu khác nhau, hãy tổng hợp chúng."
     )
 
-    # Build message list: system → history (optional) → current user turn
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if history:
         messages.extend(history)
@@ -72,7 +83,6 @@ async def generate_answer(
 
         data = resp.json()
 
-        # Standard OpenAI-compatible format
         if "choices" in data and len(data["choices"]) > 0:
             choice = data["choices"][0]
             if "message" in choice:
@@ -80,7 +90,6 @@ async def generate_answer(
             elif "text" in choice:
                 return choice["text"]
 
-        # Non-standard fallback formats
         for key in ("content", "text", "output"):
             if key in data:
                 return data[key]
