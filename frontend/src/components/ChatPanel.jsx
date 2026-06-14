@@ -88,12 +88,12 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
   const turnCount = messages.filter((m) => m.role === "user").length;
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "#e8eaef" }}>
+    <div className="flex flex-col h-full" style={{ background: "rgba(232,234,239,0.55)" }}>
 
       {/* Header */}
       <div
         className="px-6 py-3.5 flex items-center gap-3"
-        style={{ background: "#f2f3f7", borderBottom: "0.5px solid #d0d4de" }}
+        style={{ background: "rgba(242,243,247,0.82)", borderBottom: "0.5px solid #d0d4de", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#22c55e" }}>
@@ -254,12 +254,12 @@ export default function ChatPanel({ messages, loading, onSend, hasDocuments, onC
       {/* Input area */}
       <div
         className="px-5 py-4"
-        style={{ background: "#f2f3f7", borderTop: "0.5px solid #d0d4de" }}
+        style={{ background: "rgba(242,243,247,0.88)", borderTop: "0.5px solid #d0d4de", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
       >
         <div
           className="flex gap-3 items-end rounded-2xl px-4 py-3 transition-all"
           style={{
-            background: "#ebedf2",
+            background: "rgba(235,237,242,0.75)",
             border: "0.5px solid #d0d4de",
           }}
           onFocusCapture={e => e.currentTarget.style.borderColor = "#a5b4fc"}
