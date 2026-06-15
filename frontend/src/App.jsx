@@ -15,10 +15,7 @@ const INITIAL_MESSAGE = {
 function apiFetch(path, options = {}) {
   return fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: {
-      ...options.headers,
-      "X-Session-ID": getSessionId(),
-    },
+    headers: { ...options.headers, "X-Session-ID": getSessionId() },
   });
 }
 
@@ -26,6 +23,7 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
   const [loading, setLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const fetchDocuments = async () => {
     try {
@@ -39,14 +37,18 @@ export default function App() {
 
   useEffect(() => { fetchDocuments(); }, []);
 
+  // Close sidebar on resize to desktop
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth >= 768) setSidebarOpen(false); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const handleUpload = async (file) => {
     const formData = new FormData();
     formData.append("file", file);
     const res = await apiFetch("/upload", { method: "POST", body: formData });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Upload failed");
-    }
+    if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Upload failed"); }
     const doc = await res.json();
     setDocuments((prev) => [...prev, doc]);
     return doc;
@@ -81,87 +83,112 @@ export default function App() {
         body: JSON.stringify({ message, history }),
       });
       const data = await res.json();
-      const answer = res.ok ? data.answer : res.status === 429 ? `⚠️ ${data.detail || "Quá nhiều yêu cầu. Vui lòng chờ một chút rồi thử lại."}` : `⚠️ ${data.detail || "Lỗi không xác định."}`;
-      setMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+      if (res.ok) {
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: data.answer,
+          sources: data.sources || [],
+        }]);
+      } else {
+        const errMsg = res.status === 429
+          ? `⚠️ ${data.detail || "Quá nhiều yêu cầu. Vui lòng chờ một chút rồi thử lại."}`
+          : `⚠️ ${data.detail || "Lỗi không xác định."}`;
+        setMessages((prev) => [...prev, { role: "assistant", content: errMsg, sources: [] }]);
+      }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "⚠️ Không thể kết nối đến server. Vui lòng thử lại." },
-      ]);
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "⚠️ Không thể kết nối đến server. Vui lòng thử lại.",
+        sources: [],
+      }]);
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    // Outer wrapper — canvas sits here, fills full screen behind everything
-    <div className="flex h-screen relative" style={{ background: "#e8eaef" }}>
-
-      {/* Dot matrix — position:absolute fills the outer div, z-index 0 */}
-      <DotMatrixBackground />
-
-      {/* Sidebar — solid color covers canvas completely */}
-      <aside
-        className="relative z-10 w-72 flex-shrink-0 flex flex-col"
-        style={{ background: "#f2f3f7", borderRight: "0.5px solid #d0d4de" }}
-      >
-        {/* Logo area */}
-        <div className="p-5" style={{ borderBottom: "0.5px solid #d0d4de" }}>
-          <div className="flex items-center gap-3 mb-4">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: "#4338ca" }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14,2 14,8 20,8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-sm font-semibold truncate" style={{ color: "#1e2060" }}>
-                Research Assistant
-              </h1>
-              <p className="text-xs truncate" style={{ color: "#8892b8" }}>
-                Cohere · Upstash · OpenRouter
-              </p>
-            </div>
+  // ── Sidebar content (shared between desktop + mobile drawer) ──────────────
+  const SidebarContent = () => (
+    <>
+      <div className="p-5" style={{ borderBottom: "0.5px solid #d0d4de" }}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "#4338ca" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14,2 14,8 20,8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
           </div>
-
+          <div className="min-w-0">
+            <h1 className="text-sm font-semibold truncate" style={{ color: "#1e2060" }}>Research Assistant</h1>
+            <p className="text-xs truncate" style={{ color: "#8892b8" }}>Cohere · Upstash · OpenRouter</p>
+          </div>
+          {/* Close button — mobile only */}
           <button
-            onClick={handleNewSession}
-            className="w-full text-xs py-2 rounded-lg transition-all duration-150 font-medium"
-            style={{
-              border: "0.5px solid #d0d4de",
-              color: "#4338ca",
-              background: "#f2f3f7",
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = "#ebedf2"; e.currentTarget.style.borderColor = "#a5b4fc"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "#f2f3f7"; e.currentTarget.style.borderColor = "#d0d4de"; }}
+            className="ml-auto md:hidden p-1 rounded-lg"
+            onClick={() => setSidebarOpen(false)}
+            style={{ color: "#8892b8" }}
           >
-            + Phiên làm việc mới
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
           </button>
         </div>
+        <button
+          onClick={handleNewSession}
+          className="w-full text-xs py-2 rounded-lg transition-all duration-150 font-medium"
+          style={{ border: "0.5px solid #d0d4de", color: "#4338ca", background: "#f2f3f7" }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#ebedf2"; e.currentTarget.style.borderColor = "#a5b4fc"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "#f2f3f7"; e.currentTarget.style.borderColor = "#d0d4de"; }}
+        >
+          + Phiên làm việc mới
+        </button>
+      </div>
+      <UploadPanel documents={documents} onUpload={handleUpload} onDelete={handleDelete} />
+    </>
+  );
 
-        <UploadPanel
-          documents={documents}
-          onUpload={handleUpload}
-          onDelete={handleDelete}
-        />
+  return (
+    <div className="flex h-screen relative" style={{ background: "#e8eaef" }}>
+      <DotMatrixBackground />
+
+      {/* ── Desktop sidebar (md+) ── */}
+      <aside
+        className="relative z-10 hidden md:flex w-72 flex-shrink-0 flex-col"
+        style={{ background: "#f2f3f7", borderRight: "0.5px solid #d0d4de" }}
+      >
+        <SidebarContent />
       </aside>
 
-      {/* Main chat area — solid white, covers canvas completely */}
-      <main
-        className="relative z-10 flex-1 flex flex-col min-w-0"
-        style={{ background: "#ffffff" }}
+      {/* ── Mobile sidebar overlay ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-20 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+          style={{ background: "rgba(30,32,96,0.25)" }}
+        />
+      )}
+      <aside
+        className="fixed top-0 left-0 h-full z-30 flex flex-col md:hidden transition-transform duration-300"
+        style={{
+          width: "288px",
+          background: "#f2f3f7",
+          borderRight: "0.5px solid #d0d4de",
+          transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
+        }}
       >
+        <SidebarContent />
+      </aside>
+
+      {/* ── Main chat area ── */}
+      <main className="relative z-10 flex-1 flex flex-col min-w-0" style={{ background: "#ffffff" }}>
         <ChatPanel
           messages={messages}
           loading={loading}
           onSend={handleSend}
           hasDocuments={documents.length > 0}
           onClearChat={handleClearChat}
+          onOpenSidebar={() => setSidebarOpen(true)}
         />
       </main>
     </div>
