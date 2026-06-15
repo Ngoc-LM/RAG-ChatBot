@@ -178,6 +178,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
+    sources: list[dict] = []
 
 
 class DocumentInfo(BaseModel):
@@ -321,7 +322,7 @@ async def chat(
     doc_names = {doc_id: info["filename"] for doc_id, info in registry.items()}
 
     try:
-        answer = await generate_answer(
+        result = await generate_answer(
             request.message,
             chunk_results,
             doc_names=doc_names,
@@ -330,4 +331,4 @@ async def chat(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM error: {e}")
 
-    return ChatResponse(answer=answer)
+    return ChatResponse(answer=result["answer"], sources=result.get("sources", []))
