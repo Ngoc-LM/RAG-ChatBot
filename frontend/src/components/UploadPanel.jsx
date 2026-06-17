@@ -24,12 +24,36 @@ function FileBadge({ filename }) {
 }
 
 function formatSize(bytes) {
+  if (!bytes || bytes <= 0) return null;
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function UploadPanel({ documents, onUpload, onDelete }) {
+function DocumentSkeleton() {
+  return (
+    <div className="space-y-1.5">
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+          style={{ background: "#ffffff", border: "0.5px solid #d0d4de" }}
+        >
+          <div className="w-6 h-4 rounded flex-shrink-0 animate-pulse" style={{ background: "#ebedf2" }} />
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div
+              className="h-2.5 rounded animate-pulse"
+              style={{ background: "#ebedf2", width: `${60 + i * 10}%` }}
+            />
+            <div className="h-2 rounded animate-pulse" style={{ background: "#ebedf2", width: "35%" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function UploadPanel({ documents, onUpload, onDelete, loadingDocuments }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -159,7 +183,9 @@ export default function UploadPanel({ documents, onUpload, onDelete }) {
           </span>
         </div>
 
-        {documents.length === 0 && (
+        {loadingDocuments ? (
+          <DocumentSkeleton />
+        ) : documents.length === 0 ? (
           <div className="text-center py-8">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-2"
@@ -172,69 +198,71 @@ export default function UploadPanel({ documents, onUpload, onDelete }) {
             </div>
             <p className="text-xs" style={{ color: "#a8afc8" }}>Chưa có tài liệu nào</p>
           </div>
-        )}
-
-        <div className="space-y-1.5">
-          {documents.map((doc) => (
-            <div key={doc.id}>
-              {confirmDelete === doc.id ? (
-                <div
-                  className="rounded-xl px-3 py-2.5"
-                  style={{ background: "#fff0f0", border: "0.5px solid #fecaca" }}
-                >
-                  <p className="text-xs font-medium mb-2" style={{ color: "#c0392b" }}>
-                    Xóa tài liệu này?
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleDeleteConfirm(doc.id)}
-                      className="flex-1 text-xs py-1 rounded-lg font-medium transition-all"
-                      style={{ background: "#c0392b", color: "#fff" }}
-                    >
-                      Xóa
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(null)}
-                      className="flex-1 text-xs py-1 rounded-lg font-medium transition-all"
-                      style={{ background: "#e8eaef", color: "#4338ca", border: "0.5px solid #d0d4de" }}
-                    >
-                      Hủy
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 group transition-all duration-150"
-                  style={{ background: "#ffffff", border: "0.5px solid #d0d4de" }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = "#a5b4fc"}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = "#d0d4de"}
-                >
-                  <FileBadge filename={doc.filename} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate" style={{ color: "#1e2060" }}>
-                      {doc.filename}
-                    </p>
-                    <p className="text-xs" style={{ color: "#a8afc8" }}>
-                      {doc.chunk_count} đoạn văn
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setConfirmDelete(doc.id)}
-                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-150 p-1 rounded-lg"
-                    style={{ color: "#a8afc8" }}
-                    onMouseEnter={e => { e.currentTarget.style.color = "#c0392b"; e.currentTarget.style.background = "#fff0f0"; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = "#a8afc8"; e.currentTarget.style.background = "transparent"; }}
-                    title="Xóa tài liệu"
+        ) : (
+          <div className="space-y-1.5">
+            {documents.map((doc) => (
+              <div key={doc.id}>
+                {confirmDelete === doc.id ? (
+                  <div
+                    className="rounded-xl px-3 py-2.5"
+                    style={{ background: "#fff0f0", border: "0.5px solid #fecaca" }}
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6"/><path d="M14,11v6"/><path d="M9,6V4a1,1,0,0,1,1-1h4a1,1,0,0,1,1,1V6"/>
-                    </svg>
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+                    <p className="text-xs font-medium mb-2" style={{ color: "#c0392b" }}>
+                      Xóa tài liệu này?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleDeleteConfirm(doc.id)}
+                        className="flex-1 text-xs py-1 rounded-lg font-medium transition-all"
+                        style={{ background: "#c0392b", color: "#fff" }}
+                      >
+                        Xóa
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(null)}
+                        className="flex-1 text-xs py-1 rounded-lg font-medium transition-all"
+                        style={{ background: "#e8eaef", color: "#4338ca", border: "0.5px solid #d0d4de" }}
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 group transition-all duration-150"
+                    style={{ background: "#ffffff", border: "0.5px solid #d0d4de" }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "#a5b4fc"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "#d0d4de"}
+                  >
+                    <FileBadge filename={doc.filename} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate" style={{ color: "#1e2060" }}>
+                        {doc.filename}
+                      </p>
+                      <p className="text-xs" style={{ color: "#a8afc8" }}>
+                        {formatSize(doc.file_size)
+                          ? `${formatSize(doc.file_size)} · ${doc.chunk_count} đoạn văn`
+                          : `${doc.chunk_count} đoạn văn`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setConfirmDelete(doc.id)}
+                      className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-150 p-1 rounded-lg"
+                      style={{ color: "#a8afc8" }}
+                      onMouseEnter={e => { e.currentTarget.style.color = "#c0392b"; e.currentTarget.style.background = "#fff0f0"; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = "#a8afc8"; e.currentTarget.style.background = "transparent"; }}
+                      title="Xóa tài liệu"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6"/><path d="M14,11v6"/><path d="M9,6V4a1,1,0,0,1,1-1h4a1,1,0,0,1,1,1V6"/>
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
