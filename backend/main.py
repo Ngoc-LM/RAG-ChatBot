@@ -3,10 +3,9 @@ import os
 import json
 import asyncio
 from contextlib import asynccontextmanager
-from functools import wraps
 
 import httpx
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -23,6 +22,11 @@ from rate_limit import rate_limiter, registry_cache, CLEANUP_INTERVAL_SECONDS
 
 ALLOWED_EXTENSIONS = {"pdf", "docx", "txt", "md", "csv"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+# Upstash free tier caps at 10K vectors TOTAL across all sessions.
+# Without a per-session ceiling, one heavy user can exhaust the shared quota
+# and silently break uploads/search for everyone else.
+MAX_CHUNKS_PER_SESSION = 1000  # ≈ 5–6 medium-sized documents
 
 CONTENT_TYPES = {
     "pdf": "application/pdf",
@@ -131,6 +135,11 @@ async def _save_registry(session_id: str, registry: dict[str, dict]):
             resp.raise_for_status()
 
 
+def _session_chunk_total(registry: dict[str, dict]) -> int:
+    """Sum chunk_count across all documents currently in a session's registry."""
+    return sum(info.get("chunk_count", 0) for info in registry.values())
+
+
 # ── Background cleanup task ───────────────────────────────────────────────────
 
 async def _cleanup_loop():
@@ -185,6 +194,7 @@ class DocumentInfo(BaseModel):
     id: str
     filename: str
     chunk_count: int
+    file_size: int = 0
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -216,6 +226,22 @@ async def upload_document(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File exceeds 10MB limit.")
 
+    # ── Per-session chunk quota check ──
+    # Parse + chunk happens below, but we need an early estimate before
+    # spending embedding API calls. We do the real check after chunking
+    # (exact count) and reject before upserting to Upstash if over quota.
+    registry = await _load_registry(session_id)
+    current_total = _session_chunk_total(registry)
+    if current_total >= MAX_CHUNKS_PER_SESSION:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Phiên làm việc đã đạt giới hạn {MAX_CHUNKS_PER_SESSION} đoạn văn "
+                f"(hiện tại: {current_total}). Vui lòng xóa bớt tài liệu cũ hoặc "
+                f"bắt đầu phiên mới trước khi upload thêm."
+            ),
+        )
+
     doc_id = str(uuid.uuid4())
 
     content_type = CONTENT_TYPES.get(ext, "application/octet-stream")
@@ -234,19 +260,39 @@ async def upload_document(
 
     chunks = chunk_text(text)
 
+    # Exact post-chunking check — reject if THIS document alone would push
+    # the session over quota, before spending embedding calls on it.
+    if current_total + len(chunks) > MAX_CHUNKS_PER_SESSION:
+        remaining = max(0, MAX_CHUNKS_PER_SESSION - current_total)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Tài liệu này tạo ra {len(chunks)} đoạn văn, vượt quá giới hạn còn lại "
+                f"({remaining} đoạn). Vui lòng dùng tài liệu nhỏ hơn hoặc xóa bớt tài liệu cũ."
+            ),
+        )
+
     try:
         chunk_count = await upsert_chunks(session_id, doc_id, chunks)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Vector indexing failed: {e}")
 
-    registry = await _load_registry(session_id)
-    registry[doc_id] = {"filename": file.filename, "chunk_count": chunk_count}
+    registry[doc_id] = {
+        "filename": file.filename,
+        "chunk_count": chunk_count,
+        "file_size": len(content),
+    }
     try:
         await _save_registry(session_id, registry)
     except Exception as e:
         print(f"[registry] Save warning: {e}")
 
-    return DocumentInfo(id=doc_id, filename=file.filename, chunk_count=chunk_count)
+    return DocumentInfo(
+        id=doc_id,
+        filename=file.filename,
+        chunk_count=chunk_count,
+        file_size=len(content),
+    )
 
 
 @app.get("/documents", response_model=list[DocumentInfo])
@@ -256,7 +302,12 @@ async def list_documents(
     session_id = _get_session(x_session_id)
     registry = await _load_registry(session_id)
     return [
-        DocumentInfo(id=doc_id, filename=info["filename"], chunk_count=info["chunk_count"])
+        DocumentInfo(
+            id=doc_id,
+            filename=info["filename"],
+            chunk_count=info["chunk_count"],
+            file_size=info.get("file_size", 0),
+        )
         for doc_id, info in registry.items()
     ]
 
