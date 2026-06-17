@@ -21,6 +21,7 @@ function apiFetch(path, options = {}) {
 
 export default function App() {
   const [documents, setDocuments] = useState([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -32,6 +33,8 @@ export default function App() {
       setDocuments(await res.json());
     } catch (e) {
       console.error("Failed to fetch documents:", e);
+    } finally {
+      setLoadingDocuments(false);
     }
   };
 
@@ -64,6 +67,7 @@ export default function App() {
   const handleNewSession = () => {
     resetSession();
     setDocuments([]);
+    setLoadingDocuments(false);
     setMessages([INITIAL_MESSAGE]);
   };
 
@@ -144,7 +148,12 @@ export default function App() {
           + Phiên làm việc mới
         </button>
       </div>
-      <UploadPanel documents={documents} onUpload={handleUpload} onDelete={handleDelete} />
+      <UploadPanel
+        documents={documents}
+        onUpload={handleUpload}
+        onDelete={handleDelete}
+        loadingDocuments={loadingDocuments}
+      />
     </>
   );
 
