@@ -58,10 +58,16 @@ def _supabase_headers(content_type: str = "application/json") -> dict:
 
 def _get_session(x_session_id: Annotated[str | None, Header()] = None) -> str:
     if not x_session_id or len(x_session_id) < 8:
-        raise HTTPException(status_code=400, detail="Missing or invalid X-Session-ID header.")
+        raise HTTPException(
+            status_code=400,
+            detail="Missing or invalid X-Session-ID header.",
+        )
     sanitized = "".join(c for c in x_session_id if c.isalnum() or c == "-")
     if len(sanitized) < 8:
-        raise HTTPException(status_code=400, detail="Invalid X-Session-ID format.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid X-Session-ID format.",
+        )
     return sanitized[:64]
 
 
@@ -79,8 +85,6 @@ def check_rate_limit(session_id: str, endpoint: str):
 
 
 # ── Per-session registry (TTL-cached) ────────────────────────────────────────
-# Registry files are persisted on Supabase Storage.
-# In-memory TTLRegistryCache evicts idle sessions after 30 minutes.
 
 def _registry_path(session_id: str) -> str:
     return f"_registry_{session_id}.json"
@@ -121,7 +125,7 @@ async def _save_registry(session_id: str, registry: dict[str, dict]):
     async with httpx.AsyncClient(timeout=15) as client:
         for method, url in [
             ("patch", f"{base_url}/{_BUCKET}/{path}"),
-            ("post",  f"{base_url}/{_BUCKET}/{path}"),
+            ("post", f"{base_url}/{_BUCKET}/{path}"),
         ]:
             resp = await getattr(client, method)(
                 url,
@@ -162,11 +166,19 @@ async def lifespan(app: FastAPI):
     print("[shutdown] RAG Chatbot backend stopped.")
 
 
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+
+ALLOWED_ORIGINS = (
+    [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+    if allowed_origins_env
+    else ["http://localhost:3000"]
+)
+
 app = FastAPI(title="RAG Research Assistant", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*", "X-Session-ID"],
@@ -201,10 +213,7 @@ class DocumentInfo(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "cache_sessions": registry_cache.size,
-    }
+    return {"status": "ok"}
 
 
 @app.post("/upload", response_model=DocumentInfo)
@@ -226,10 +235,6 @@ async def upload_document(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File exceeds 10MB limit.")
 
-    # ── Per-session chunk quota check ──
-    # Parse + chunk happens below, but we need an early estimate before
-    # spending embedding API calls. We do the real check after chunking
-    # (exact count) and reject before upserting to Upstash if over quota.
     registry = await _load_registry(session_id)
     current_total = _session_chunk_total(registry)
     if current_total >= MAX_CHUNKS_PER_SESSION:
@@ -243,8 +248,8 @@ async def upload_document(
         )
 
     doc_id = str(uuid.uuid4())
-
     content_type = CONTENT_TYPES.get(ext, "application/octet-stream")
+
     try:
         await upload_file(session_id, doc_id, file.filename, content, content_type)
     except Exception as e:
@@ -260,8 +265,6 @@ async def upload_document(
 
     chunks = chunk_text(text)
 
-    # Exact post-chunking check — reject if THIS document alone would push
-    # the session over quota, before spending embedding calls on it.
     if current_total + len(chunks) > MAX_CHUNKS_PER_SESSION:
         remaining = max(0, MAX_CHUNKS_PER_SESSION - current_total)
         raise HTTPException(
@@ -282,6 +285,7 @@ async def upload_document(
         "chunk_count": chunk_count,
         "file_size": len(content),
     }
+
     try:
         await _save_registry(session_id, registry)
     except Exception as e:
@@ -337,6 +341,7 @@ async def delete_document(
         print(f"[delete] File delete warning: {e}")
 
     del registry[doc_id]
+
     try:
         await _save_registry(session_id, registry)
     except Exception as e:
@@ -383,3 +388,13 @@ async def chat(
         raise HTTPException(status_code=500, detail=f"LLM error: {e}")
 
     return ChatResponse(answer=result["answer"], sources=result.get("sources", []))
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "8000")),
+    )
