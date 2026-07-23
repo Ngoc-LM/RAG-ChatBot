@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: rag-chatbot-backend
+    runtime: python
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # ── Cấu hình công khai (nằm trong version control) ──
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: ALLOWED_ORIGINS
+        value: https://rag-chatbot-ngoclm.vercel.app
+
+      # ── Secrets: Render hỏi giá trị khi tạo Blueprint lần đầu ──
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
+      - key: UPSTASH_VECTOR_REST_URL
+        sync: false
+      - key: UPSTASH_VECTOR_REST_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
