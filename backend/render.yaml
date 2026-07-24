@@ -14,12 +14,12 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: ALLOWED_ORIGINS
-        value: https://rag-chatbot-ngoclm.vercel.app
+        value: https://rag-chatbot-one-blush.vercel.app
 
       # ── Secrets: Render hỏi giá trị khi tạo Blueprint lần đầu ──
       - key: OPENROUTER_API_KEY
         sync: false
-      - key: JINA_API_KEY
+      - key: COHERE_API_KEY
         sync: false
       - key: UPSTASH_VECTOR_REST_URL
         sync: false
