@@ -1,10 +1,32 @@
 # RAG Research Assistant
 
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
+![License](https://img.shields.io/badge/License-Educational-lightgrey)
+
 A full-stack, multi-tenant Retrieval-Augmented Generation (RAG) chatbot for document-grounded Q&A in Vietnamese and English. Upload PDF, DOCX, TXT, Markdown, or CSV files and ask questions answered strictly from their content, with cited sources.
 
 **Live demo:** [rag-chatbot-one-blush.vercel.app](https://rag-chatbot-one-blush.vercel.app)
 
 ---
+
+## Table of contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Key features](#key-features)
+- [Tech stack](#tech-stack)
+- [Repository structure](#repository-structure)
+- [API reference](#api-reference)
+- [Configuration](#configuration)
+- [Getting started](#getting-started)
+- [Deployment](#deployment)
+- [Troubleshooting](#troubleshooting)
+- [Known limitations](#known-limitations)
+- [Security notes](#security-notes)
+- [License](#license)
 
 ## Overview
 
@@ -18,7 +40,7 @@ Retrieval uses a two-stage design: per-document vector search guarantees every u
 ┌─────────────┐      HTTPS       ┌──────────────────┐
 │   Frontend   │ ───────────────▶ │      Backend      │
 │ React + Vite │  X-Session-ID    │     FastAPI       │
-│   (Vercel)   │ ◀─────────────── │    (Railway)      │
+│   (Vercel)   │ ◀─────────────── │     (Render)      │
 └─────────────┘                  └─────────┬─────────┘
                                             │
                 ┌───────────────────────────┼───────────────────────────┐
@@ -62,7 +84,7 @@ Query
 - **Token-aware chunking** — documents are split using `tiktoken`, not naive word counts, keeping every chunk under the embedding model's token limit even for token-dense languages like Vietnamese.
 - **Source-attributed answers** — every response includes the exact source documents used, derived directly from retrieval results rather than the LLM's own (unreliable) self-reporting.
 - **Multilingual support** — Vietnamese and English, powered by Cohere's multilingual embedding and reranking models.
-- **Persistent, restart-safe state** — document registries are stored in Supabase, not backend memory, so sessions survive Railway redeploys and cold starts.
+- **Persistent, restart-safe state** — document registries are stored in Supabase, not backend memory, so sessions survive backend redeploys and cold starts.
 - **Rich frontend** — Markdown rendering with KaTeX math support, animated dot-matrix background, responsive mobile drawer navigation, and per-message source citations.
 
 ## Tech stack
@@ -78,21 +100,22 @@ Query
 | Math rendering | KaTeX |
 | Tokenization | `tiktoken` |
 | Frontend hosting | Vercel |
-| Backend hosting | Railway |
+| Backend hosting | Render |
 
 ## Repository structure
 
 ```
 rag-chatbot/
 ├── backend/
-│   ├── main.py           # FastAPI routes, session handling, quota enforcement
-│   ├── parser.py         # Document parsing + token-aware chunking
-│   ├── vector_store.py   # Embedding, vector search, reranking pipeline
-│   ├── storage.py        # Supabase Storage client
-│   ├── llm.py            # OpenRouter integration, source attribution
-│   ├── rate_limit.py     # Sliding-window rate limiter + TTL cache
+│   ├── main.py            # FastAPI routes, session handling, quota enforcement
+│   ├── parser.py          # Document parsing + token-aware chunking
+│   ├── vector_store.py    # Embedding, vector search, reranking pipeline
+│   ├── storage.py         # Supabase Storage client
+│   ├── llm.py             # OpenRouter integration, source attribution
+│   ├── rate_limit.py      # Sliding-window rate limiter + TTL cache
 │   ├── requirements.txt
-│   └── railway.toml
+│   ├── render.yaml        # Render Blueprint (service + env var definitions)
+│   └── .python-version    # Pins Python 3.11.9 for the Render build
 └── frontend/
     ├── src/
     │   ├── App.jsx
@@ -131,6 +154,29 @@ All endpoints except `/health` require an `X-Session-ID` header, sent automatica
 | Rate limit — delete | 20 requests / 60s |
 | Session cache TTL | 30 minutes idle |
 
+## Configuration
+
+The backend is configured entirely through environment variables. None have insecure defaults — every external service must be supplied explicitly.
+
+| Variable | Required | Description |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key for LLM generation |
+| `COHERE_API_KEY` | Yes | Cohere API key for embeddings and reranking |
+| `UPSTASH_VECTOR_REST_URL` | Yes | Upstash Vector REST endpoint |
+| `UPSTASH_VECTOR_REST_TOKEN` | Yes | Upstash Vector REST token |
+| `SUPABASE_URL` | Yes | Supabase project URL (`https://<ref>.supabase.co`, no trailing slash) |
+| `SUPABASE_KEY` | Yes | Supabase service-role key (Storage read/write) |
+| `ALLOWED_ORIGINS` | Yes (prod) | Comma-separated allowed CORS origins. Defaults to `http://localhost:3000` if unset |
+| `PORT` | No | Port to bind; injected automatically by the host. Defaults to `8000` |
+
+The frontend reads a single build-time variable:
+
+| Variable | Required | Description |
+|---|---|---|
+| `VITE_API_URL` | Yes (prod) | Base URL of the backend API. Defaults to `http://localhost:8000` |
+
+> **Note:** `VITE_*` variables are inlined at **build** time, not runtime. Changing `VITE_API_URL` requires a fresh frontend build/redeploy to take effect.
+
 ## Getting started
 
 ### Prerequisites
@@ -148,7 +194,7 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in `backend/`:
+Create a `.env` file in `backend/` (see [Configuration](#configuration)):
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -157,6 +203,7 @@ UPSTASH_VECTOR_REST_URL=https://...
 UPSTASH_VECTOR_REST_TOKEN=...
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=...
+ALLOWED_ORIGINS=http://localhost:5173
 ```
 
 In Supabase, create a private Storage bucket named `documents`.
@@ -190,16 +237,44 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Deployment
 
-**Backend (Railway):** deploy the `backend/` directory as the project root. Railway auto-detects the Python environment via `requirements.txt`. Set the same environment variables listed above, then generate a public domain under **Settings → Networking**.
+### Backend (Render)
 
-**Frontend (Vercel):** deploy the `frontend/` directory as the project root, with the **Vite** framework preset auto-detected. Set `VITE_API_URL` to the Railway backend domain.
+The repository ships a Render Blueprint at `backend/render.yaml`, which declares the web service, its Python runtime, and all required environment variables.
 
-**Supabase:** create a private Storage bucket named `documents`. No additional database schema is required — session registries are stored as JSON objects within the same bucket.
+**Option A — Blueprint (recommended).** In Render, choose **New → Blueprint** and point it at this repository. Render reads `backend/render.yaml`, provisions the service with `rootDir: backend`, and prompts for each secret marked `sync: false` (`OPENROUTER_API_KEY`, `COHERE_API_KEY`, `UPSTASH_VECTOR_REST_URL`, `UPSTASH_VECTOR_REST_TOKEN`, `SUPABASE_URL`, `SUPABASE_KEY`). Update the `ALLOWED_ORIGINS` value to match your frontend's public domain.
+
+**Option B — Manual web service.** Create a new **Web Service**, set:
+
+- **Root directory:** `backend`
+- **Build command:** `pip install -r requirements.txt`
+- **Start command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Health check path:** `/health`
+- Add every variable from [Configuration](#configuration) under **Environment**.
+
+> **Python version matters.** `backend/.python-version` pins Python **3.11.9**. This is required: `tiktoken==0.7.0` publishes prebuilt wheels only up to Python 3.12, so on newer interpreters the build falls back to compiling from Rust source and fails on Render's read-only build filesystem. The `.python-version` file is honored on every deploy, including manually created services (unlike `render.yaml`'s `envVars`, which apply only to Blueprint-provisioned services).
+
+### Frontend (Vercel)
+
+Deploy the `frontend/` directory as the project root, with the **Vite** framework preset auto-detected. Set `VITE_API_URL` to your Render backend URL (e.g. `https://<service>.onrender.com`, no trailing slash), then redeploy so the value is baked into the build.
+
+### Supabase
+
+Create a private Storage bucket named `documents`. No additional database schema is required — session registries are stored as JSON objects within the same bucket. On the free tier, projects are **paused after a week of inactivity**; a paused project causes storage requests to fail, so resume it from the Supabase dashboard before use.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Failed to fetch` / `ERR_CONNECTION_REFUSED` calling `localhost:8000` | `VITE_API_URL` not set on Vercel | Set it to the Render URL and redeploy the frontend |
+| `blocked by CORS policy` | Frontend origin not in `ALLOWED_ORIGINS` | Set `ALLOWED_ORIGINS` on the backend to the exact Vercel domain, then redeploy |
+| `Building wheel for tiktoken ... error` at build time | Build ran on Python 3.13+ | Ensure `backend/.python-version` (3.11.9) is present and picked up |
+| `Storage upload failed: [Errno -2] Name or service not known` | Bad/empty `SUPABASE_URL`, or Supabase project paused | Verify the URL (no stray whitespace) and resume the Supabase project |
+| First request after idle is slow (10–30s) | Render free-tier cold start | Expected; the service spins back up on the first request |
 
 ## Known limitations
 
 - **Scanned PDFs are not supported.** Text extraction relies on `pypdf`, which requires a text layer; OCR is not yet implemented.
-- **Railway free-tier cold starts.** After ~30 minutes of inactivity, the backend may take 10–30 seconds to respond to the first request.
+- **Render free-tier cold starts.** After a period of inactivity, the backend may take 10–30 seconds to respond to the first request.
 - **Shared vector store quota.** Upstash's free tier caps at 10,000 vectors across all sessions; the per-session quota mitigates but does not eliminate this constraint under heavy aggregate usage.
 
 ## Security notes

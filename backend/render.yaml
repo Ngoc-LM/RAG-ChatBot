@@ -19,7 +19,7 @@ services:
       # ── Secrets: Render hỏi giá trị khi tạo Blueprint lần đầu ──
       - key: OPENROUTER_API_KEY
         sync: false
-      - key: JINA_API_KEY
+      - key: COHERE_API_KEY
         sync: false
       - key: UPSTASH_VECTOR_REST_URL
         sync: false
